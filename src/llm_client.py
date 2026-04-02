@@ -15,9 +15,19 @@ class ToolCall:
 
 
 @dataclass(frozen=True)
+class LlmUsage:
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    latency_ms: float
+    tokens_per_second: float
+
+
+@dataclass(frozen=True)
 class LlmResponse:
     text: str
     tool_calls: list[ToolCall] = field(default_factory=list)
+    usage: LlmUsage | None = None
 
 
 _TOOL_CALL_RE = re.compile(r"<tool_call>(.*?)</tool_call>", re.DOTALL)
@@ -75,6 +85,24 @@ class LlmClient:
     def parse_response(raw: dict) -> LlmResponse:
         message = raw["message"]
         content = message.get("content", "")
+
+        # Extract usage metrics from Ollama response
+        usage = None
+        prompt_eval = raw.get("prompt_eval_count")
+        eval_count = raw.get("eval_count")
+        total_duration = raw.get("total_duration")
+        if prompt_eval is not None and eval_count is not None:
+            total = prompt_eval + eval_count
+            latency_ms = (total_duration / 1_000_000) if total_duration else 0.0
+            tps = (eval_count / (latency_ms / 1000)) if latency_ms > 0 else 0.0
+            usage = LlmUsage(
+                prompt_tokens=prompt_eval,
+                completion_tokens=eval_count,
+                total_tokens=total,
+                latency_ms=latency_ms,
+                tokens_per_second=round(tps, 1),
+            )
+
         # Mode 1: native tool calls
         native_calls = message.get("tool_calls")
         if native_calls:
@@ -85,7 +113,7 @@ class LlmClient:
                 if isinstance(args, str):
                     args = json.loads(args)
                 tool_calls.append(ToolCall(name=func["name"], arguments=args))
-            return LlmResponse(text=content, tool_calls=tool_calls)
+            return LlmResponse(text=content, tool_calls=tool_calls, usage=usage)
         # Mode 2: fallback XML parsing
         matches = _TOOL_CALL_RE.findall(content)
         if matches:
@@ -99,9 +127,9 @@ class LlmClient:
                     )
                 )
             text = _TOOL_CALL_RE.sub("", content).strip()
-            return LlmResponse(text=text, tool_calls=tool_calls)
+            return LlmResponse(text=text, tool_calls=tool_calls, usage=usage)
         # Mode 3: plain text
-        return LlmResponse(text=content)
+        return LlmResponse(text=content, usage=usage)
 
     async def close(self) -> None:
         await self._http.aclose()

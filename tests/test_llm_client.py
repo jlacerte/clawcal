@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.llm_client import LlmClient, ToolCall, LlmResponse
+from src.llm_client import LlmClient, ToolCall, LlmResponse, LlmUsage
 
 
 def test_parse_native_tool_call():
@@ -64,3 +64,33 @@ def test_parse_multiple_fallback_tool_calls():
     assert len(response.tool_calls) == 2
     assert response.tool_calls[0].name == "read_file"
     assert response.tool_calls[1].name == "bash"
+
+
+def test_parse_response_with_usage():
+    raw = {
+        "message": {
+            "role": "assistant",
+            "content": "Hello!",
+        },
+        "prompt_eval_count": 100,
+        "eval_count": 50,
+        "total_duration": 1_500_000_000,
+    }
+    response = LlmClient.parse_response(raw)
+    assert response.usage is not None
+    assert response.usage.prompt_tokens == 100
+    assert response.usage.completion_tokens == 50
+    assert response.usage.total_tokens == 150
+    assert abs(response.usage.latency_ms - 1500.0) < 0.1
+    assert response.usage.tokens_per_second > 0
+
+
+def test_parse_response_without_usage():
+    raw = {
+        "message": {
+            "role": "assistant",
+            "content": "Hello!",
+        },
+    }
+    response = LlmClient.parse_response(raw)
+    assert response.usage is None
