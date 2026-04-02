@@ -58,3 +58,13 @@ async def test_execute_unknown_tool(registry: ToolRegistry):
 def test_register_duplicate(registry: ToolRegistry):
     with pytest.raises(ValueError, match="already registered"):
         registry.register(FakeTool())
+
+
+from src.tools import ALL_TOOLS
+
+
+def test_all_tools_loaded():
+    assert len(ALL_TOOLS) == 7
+    names = {t.name for t in ALL_TOOLS}
+    expected = {"read_file", "write_file", "edit_file", "bash", "glob_tool", "grep_tool", "list_directory"}
+    assert names == expected
