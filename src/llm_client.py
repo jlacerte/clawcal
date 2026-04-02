@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
 import httpx
 
@@ -20,6 +21,17 @@ class LlmResponse:
 
 
 _TOOL_CALL_RE = re.compile(r"<tool_call>(.*?)</tool_call>", re.DOTALL)
+
+
+@runtime_checkable
+class LlmClientProtocol(Protocol):
+    async def chat(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+    ) -> LlmResponse: ...
+
+    async def close(self) -> None: ...
 
 
 class LlmClient:
@@ -93,3 +105,9 @@ class LlmClient:
 
     async def close(self) -> None:
         await self._http.aclose()
+
+    async def __aenter__(self) -> LlmClient:
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        await self.close()

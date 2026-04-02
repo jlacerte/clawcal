@@ -24,6 +24,6 @@ class WriteFileTool(Tool):
             os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
-            return f"Written {len(content)} bytes to {path}"
+            return f"Written {len(content)} characters to {path}"
         except OSError as e:
             return f"Error writing file: {e}"

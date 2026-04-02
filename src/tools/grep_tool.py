@@ -28,6 +28,7 @@ class GrepTool(Tool):
             regex = re.compile(pattern)
         except re.error as e:
             return f"Invalid regex: {e}"
+        max_results = 1000
         results: list[str] = []
         for root, _dirs, files in os.walk(path):
             for fname in sorted(files):
@@ -39,6 +40,9 @@ class GrepTool(Tool):
                         for lineno, line in enumerate(f, 1):
                             if regex.search(line):
                                 results.append(f"{filepath}:{lineno}:{line.rstrip()}")
+                                if len(results) >= max_results:
+                                    results.append(f"(truncated at {max_results} results)")
+                                    return "\n".join(results)
                 except OSError:
                     continue
         if not results:

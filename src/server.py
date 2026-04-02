@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -57,12 +58,16 @@ def create_server(
     async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         if name == "code_agent":
             cwd = arguments.get("working_directory")
+            original_cwd = os.getcwd()
             if cwd:
-                import os
                 os.chdir(cwd)
-            max_iter = arguments.get("max_iterations", 20)
-            agent = Agent(llm=llm, registry=registry, max_iterations=max_iter)
-            result = await agent.run(arguments["prompt"])
+            try:
+                max_iter = arguments.get("max_iterations", 20)
+                agent = Agent(llm=llm, registry=registry, max_iterations=max_iter)
+                result = await agent.run(arguments["prompt"])
+            finally:
+                if cwd:
+                    os.chdir(original_cwd)
             return [TextContent(type="text", text=result)]
         result = await registry.execute(name, arguments)
         return [TextContent(type="text", text=result)]

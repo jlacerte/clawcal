@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import os
+
 from src.tools.base import Tool
+
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 class ReadFileTool(Tool):
@@ -21,6 +25,9 @@ class ReadFileTool(Tool):
         offset = int(params.get("offset", 1))
         limit = params.get("limit")
         try:
+            file_size = os.path.getsize(path)
+            if file_size > MAX_FILE_SIZE:
+                return f"Error: file too large ({file_size} bytes, max {MAX_FILE_SIZE})"
             with open(path, encoding="utf-8", errors="replace") as f:
                 lines = f.readlines()
         except OSError as e:

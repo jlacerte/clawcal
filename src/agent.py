@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.llm_client import LlmClientProtocol
 from src.tool_registry import ToolRegistry
 
 
@@ -15,7 +16,7 @@ If the model does not support native tool calling, wrap tool calls in XML:
 class Agent:
     def __init__(
         self,
-        llm: object,
+        llm: LlmClientProtocol,
         registry: ToolRegistry,
         max_iterations: int = 20,
         system_prompt: str = SYSTEM_PROMPT,
@@ -45,8 +46,8 @@ class Agent:
             for tc in response.tool_calls:
                 try:
                     result = await self._registry.execute(tc.name, tc.arguments)
-                except (KeyError, Exception) as e:
-                    result = f"Error: {e}"
+                except Exception as e:
+                    result = f"Error executing tool '{tc.name}': {e}"
 
                 messages.append({
                     "role": "tool",
