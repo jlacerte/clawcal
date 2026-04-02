@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import uuid
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -10,6 +11,7 @@ from mcp.types import Tool as McpTool, TextContent
 
 from src.agent import Agent
 from src.llm_client import LlmClient
+from src.observability import MetricsCollector, CostEstimator, MetricsStore, setup_logging, log_session
 from src.tool_registry import ToolRegistry
 from src.tools import ALL_TOOLS
 
@@ -17,6 +19,7 @@ from src.tools import ALL_TOOLS
 def create_server(
     model: str = "qwen3:14b",
     ollama_url: str = "http://localhost:11434",
+    store: MetricsStore | None = None,
 ) -> Server:
     server = Server("clawcal")
 
@@ -25,6 +28,7 @@ def create_server(
         registry.register(tool)
 
     llm = LlmClient(ollama_url=ollama_url, model=model)
+    cost_estimator = CostEstimator()
 
     @server.list_tools()
     async def list_tools() -> list[McpTool]:
@@ -61,13 +65,29 @@ def create_server(
             original_cwd = os.getcwd()
             if cwd:
                 os.chdir(cwd)
+
+            session_id = str(uuid.uuid4())
+            collector = MetricsCollector(
+                session_id=session_id,
+                prompt=arguments["prompt"],
+                model=model,
+                cost_estimator=cost_estimator,
+            )
+
             try:
                 max_iter = arguments.get("max_iterations", 20)
-                agent = Agent(llm=llm, registry=registry, max_iterations=max_iter)
+                agent = Agent(llm=llm, registry=registry, max_iterations=max_iter, collector=collector)
                 result = await agent.run(arguments["prompt"])
             finally:
                 if cwd:
                     os.chdir(original_cwd)
+
+            session_event = collector.finalize()
+            log_session(session_event)
+
+            if store:
+                await store.save_session(session_event, collector.llm_events, collector.tool_events)
+
             return [TextContent(type="text", text=result)]
         result = await registry.execute(name, arguments)
         return [TextContent(type="text", text=result)]
@@ -76,9 +96,17 @@ def create_server(
 
 
 async def run_server(model: str, ollama_url: str) -> None:
-    server = create_server(model=model, ollama_url=ollama_url)
-    async with stdio_server() as (read, write):
-        await server.run(read, write, server.create_initialization_options())
+    setup_logging()
+
+    store = MetricsStore()
+    await store.init()
+
+    server = create_server(model=model, ollama_url=ollama_url, store=store)
+    try:
+        async with stdio_server() as (read, write):
+            await server.run(read, write, server.create_initialization_options())
+    finally:
+        await store.close()
 
 
 def main() -> None:

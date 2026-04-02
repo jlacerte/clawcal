@@ -94,3 +94,34 @@ async def test_agent_reads_file_with_fake_llm():
     agent = Agent(llm=fake_llm, registry=registry)
     result = await agent.run("Read that file")
     assert "hello from e2e test" in result
+
+
+from src.observability.collector import MetricsCollector
+from src.observability.cost_estimator import CostEstimator
+
+
+@pytest.mark.asyncio
+async def test_agent_with_collector():
+    registry = ToolRegistry()
+    registry.register(EchoTool())
+
+    collector = MetricsCollector(
+        session_id="agent-test-1",
+        prompt="Echo yo",
+        model="test-model",
+        cost_estimator=CostEstimator(),
+    )
+
+    fake_llm = FakeLlmClient([
+        LlmResponse(text="", tool_calls=[ToolCall(name="echo", arguments={"text": "yo"})]),
+        LlmResponse(text="Done!"),
+    ])
+    agent = Agent(llm=fake_llm, registry=registry, collector=collector)
+
+    result = await agent.run("Echo yo")
+    assert "Done" in result
+
+    session = collector.finalize()
+    assert session.total_tool_calls == 1
+    assert session.total_iterations == 2
+    assert "echo" in session.tools_used
