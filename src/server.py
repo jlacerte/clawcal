@@ -12,6 +12,7 @@ from mcp.types import Tool as McpTool, TextContent
 from src.agent import Agent
 from src.llm_client import LlmClient
 from src.observability import MetricsCollector, CostEstimator, MetricsStore, setup_logging, log_session
+from src.task_manager import TaskManager
 from src.tool_registry import ToolRegistry
 from src.tools import ALL_TOOLS
 
@@ -31,6 +32,9 @@ def create_server(
     if llm is None:
         llm = LlmClient(ollama_url=ollama_url, model=model)
     cost_estimator = CostEstimator()
+    task_manager = TaskManager(
+        llm=llm, registry=registry, cost_estimator=cost_estimator, model=model,
+    )
 
     @server.list_tools()
     async def list_tools() -> list[McpTool]:
@@ -55,6 +59,47 @@ def create_server(
                         "max_iterations": {"type": "integer", "description": "Max agent iterations (default: 20)"},
                     },
                     "required": ["prompt"],
+                },
+            )
+        )
+        tools.append(
+            McpTool(
+                name="code_agent_submit",
+                description="Submit a coding task for async background execution. Returns immediately with a task_id.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "prompt": {"type": "string", "description": "Natural language coding task"},
+                        "working_directory": {"type": "string", "description": "Working directory (default: cwd)"},
+                        "max_iterations": {"type": "integer", "description": "Max agent iterations (default: 20)"},
+                    },
+                    "required": ["prompt"],
+                },
+            )
+        )
+        tools.append(
+            McpTool(
+                name="code_agent_status",
+                description="Check the status of a submitted task.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "task_id": {"type": "string", "description": "Task ID from code_agent_submit"},
+                    },
+                    "required": ["task_id"],
+                },
+            )
+        )
+        tools.append(
+            McpTool(
+                name="code_agent_result",
+                description="Get the result of a completed task.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "task_id": {"type": "string", "description": "Task ID from code_agent_submit"},
+                    },
+                    "required": ["task_id"],
                 },
             )
         )
@@ -94,6 +139,26 @@ def create_server(
                     await store.save_session(session_event, collector.llm_events, collector.tool_events)
 
                 return [TextContent(type="text", text=result)]
+
+        if name == "code_agent_submit":
+            import json
+            result = await task_manager.submit(
+                prompt=arguments["prompt"],
+                working_directory=arguments.get("working_directory"),
+                max_iterations=arguments.get("max_iterations", 20),
+            )
+            return [TextContent(type="text", text=json.dumps(result))]
+
+        if name == "code_agent_status":
+            import json
+            result = task_manager.status(arguments["task_id"])
+            return [TextContent(type="text", text=json.dumps(result))]
+
+        if name == "code_agent_result":
+            import json
+            result = task_manager.result(arguments["task_id"])
+            return [TextContent(type="text", text=json.dumps(result))]
+
         try:
             result = await registry.execute(name, arguments)
         except KeyError as e:

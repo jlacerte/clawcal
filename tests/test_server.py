@@ -55,3 +55,19 @@ def test_main_parses_stdio_transport(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["server", "--transport", "stdio"])
     mod.main()
     assert called_with["model"] == "qwen3:14b"
+
+
+import pytest
+from mcp.types import ListToolsRequest
+
+
+@pytest.mark.asyncio
+async def test_async_tools_registered():
+    server = create_server()
+    handler = server.request_handlers.get(ListToolsRequest)
+    assert handler is not None
+    result = await handler(None)
+    tool_names = [t.name for t in result.root.tools]
+    assert "code_agent_submit" in tool_names
+    assert "code_agent_status" in tool_names
+    assert "code_agent_result" in tool_names
