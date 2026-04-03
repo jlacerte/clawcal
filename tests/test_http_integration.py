@@ -96,3 +96,20 @@ def test_mcp_tools_list_with_session():
         tool_names = {t["name"] for t in tools}
         assert "code_agent" in tool_names, f"code_agent not in tool names: {tool_names}"
         assert "read_file" in tool_names, f"read_file not in tool names: {tool_names}"
+
+
+def test_health_endpoint():
+    with TestClient(create_http_app()) as client:
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["server"] == "clawcal"
+        assert data["status"] == "running"
+
+
+def test_health_returns_expected_fields():
+    with TestClient(create_http_app()) as client:
+        data = client.get("/health").json()
+        assert "server" in data
+        assert "model" in data
+        assert "ollama" in data
