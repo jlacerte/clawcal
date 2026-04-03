@@ -30,7 +30,9 @@ class GrepTool(Tool):
             return f"Invalid regex: {e}"
         max_results = 1000
         results: list[str] = []
-        for root, _dirs, files in os.walk(path):
+        _EXCLUDED_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache"}
+        for root, dirs, files in os.walk(path):
+            dirs[:] = [d for d in dirs if d not in _EXCLUDED_DIRS]
             for fname in sorted(files):
                 if glob_filter and not fnmatch.fnmatch(fname, str(glob_filter)):
                     continue

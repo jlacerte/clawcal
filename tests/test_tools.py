@@ -222,3 +222,26 @@ async def test_list_directory_not_found():
     tool = ListDirectoryTool()
     result = await tool.execute(path="/nonexistent/dir")
     assert "Error" in result
+
+
+@pytest.mark.asyncio
+async def test_grep_skips_excluded_directories(tmp_path):
+    """grep_tool should skip .git, .venv, node_modules, __pycache__."""
+    from src.tools.grep_tool import GrepTool
+
+    # Create files in excluded directories
+    for excluded in [".git", ".venv", "node_modules", "__pycache__"]:
+        d = tmp_path / excluded
+        d.mkdir()
+        (d / "match.py").write_text("findme_secret_pattern")
+
+    # Create a file in a normal directory
+    (tmp_path / "normal.py").write_text("findme_secret_pattern")
+
+    tool = GrepTool()
+    result = await tool.execute(pattern="findme_secret_pattern", path=str(tmp_path))
+    assert "normal.py" in result
+    assert ".git" not in result
+    assert ".venv" not in result
+    assert "node_modules" not in result
+    assert "__pycache__" not in result
