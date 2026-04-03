@@ -148,3 +148,15 @@ async def test_signal_file_created_on_error(tmp_path, monkeypatch):
     signal_file = tmp_path / f"{task_id}.error"
     assert signal_file.exists()
     assert "LLM crashed" in signal_file.read_text()
+
+
+@pytest.mark.asyncio
+async def test_run_sync_returns_result():
+    """run_sync executes agent synchronously and returns the result string."""
+    llm = FakeLlmClient([LlmResponse(text="Sync done!")])
+    registry = ToolRegistry()
+    cost_est = CostEstimator()
+    tm = TaskManager(llm=llm, registry=registry, cost_estimator=cost_est)
+
+    result = await tm.run_sync("Say hello")
+    assert result == "Sync done!"

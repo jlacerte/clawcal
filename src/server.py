@@ -2,16 +2,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
-import uuid
+import json
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool as McpTool, TextContent
 
-from src.agent import Agent
 from src.llm_client import LlmClient
-from src.observability import MetricsCollector, CostEstimator, MetricsStore, setup_logging, log_session
+from src.observability import CostEstimator, MetricsStore, setup_logging
 from src.task_manager import TaskManager
 from src.tool_registry import ToolRegistry
 from src.tools import ALL_TOOLS
@@ -105,43 +103,17 @@ def create_server(
         )
         return tools
 
-    agent_lock = asyncio.Lock()
-
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         if name == "code_agent":
-            async with agent_lock:
-                cwd = arguments.get("working_directory")
-                original_cwd = os.getcwd()
-                if cwd:
-                    os.chdir(cwd)
-
-                session_id = str(uuid.uuid4())
-                collector = MetricsCollector(
-                    session_id=session_id,
-                    prompt=arguments["prompt"],
-                    model=model,
-                    cost_estimator=cost_estimator,
-                )
-
-                try:
-                    max_iter = arguments.get("max_iterations", 20)
-                    agent = Agent(llm=llm, registry=registry, max_iterations=max_iter, collector=collector)
-                    result = await agent.run(arguments["prompt"])
-                finally:
-                    if cwd:
-                        os.chdir(original_cwd)
-
-                session_event = collector.finalize()
-                log_session(session_event)
-
-                if store:
-                    await store.save_session(session_event, collector.llm_events, collector.tool_events)
-
-                return [TextContent(type="text", text=result)]
+            result = await task_manager.run_sync(
+                prompt=arguments["prompt"],
+                working_directory=arguments.get("working_directory"),
+                max_iterations=arguments.get("max_iterations", 20),
+            )
+            return [TextContent(type="text", text=result)]
 
         if name == "code_agent_submit":
-            import json
             result = await task_manager.submit(
                 prompt=arguments["prompt"],
                 working_directory=arguments.get("working_directory"),
@@ -150,12 +122,10 @@ def create_server(
             return [TextContent(type="text", text=json.dumps(result))]
 
         if name == "code_agent_status":
-            import json
             result = task_manager.status(arguments["task_id"])
             return [TextContent(type="text", text=json.dumps(result))]
 
         if name == "code_agent_result":
-            import json
             result = task_manager.result(arguments["task_id"])
             return [TextContent(type="text", text=json.dumps(result))]
 

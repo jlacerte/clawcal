@@ -55,6 +55,36 @@ class TaskManager:
         entry["_asyncio_task"] = asyncio_task
         return {"task_id": task_id, "status": "running"}
 
+    async def run_sync(
+        self,
+        prompt: str,
+        working_directory: str | None = None,
+        max_iterations: int = 20,
+    ) -> str:
+        """Run agent synchronously under the shared lock. Used by code_agent tool."""
+        async with self._lock:
+            original_cwd = os.getcwd()
+            if working_directory:
+                os.chdir(working_directory)
+            try:
+                collector = MetricsCollector(
+                    session_id=uuid.uuid4().hex[:8],
+                    prompt=prompt,
+                    model=self._model,
+                    cost_estimator=self._cost_estimator,
+                )
+                agent = Agent(
+                    llm=self._llm,
+                    registry=self._registry,
+                    max_iterations=max_iterations,
+                    collector=collector,
+                )
+                result = await agent.run(prompt)
+                return result
+            finally:
+                if working_directory:
+                    os.chdir(original_cwd)
+
     async def _run_agent(
         self,
         task_id: str,
