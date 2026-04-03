@@ -109,12 +109,55 @@ async def run_server(model: str, ollama_url: str) -> None:
         await store.close()
 
 
-async def run_http_server(model: str, ollama_url: str, port: int) -> None:
-    import uvicorn
+def create_http_app(
+    model: str = "qwen3:14b",
+    ollama_url: str = "http://localhost:11434",
+) -> "Starlette":
+    """Build the Starlette app with StreamableHTTPSessionManager.
+
+    Separated from run_http_server so tests can use it without uvicorn.
+    """
+    import contextlib
+
     from starlette.applications import Starlette
     from starlette.responses import JSONResponse
-    from starlette.routing import Route
-    from mcp.server.streamable_http import StreamableHTTPServerTransport
+    from starlette.routing import Route, Mount
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+
+    from src.health import check_ollama
+
+    server = create_server(model=model, ollama_url=ollama_url)
+
+    session_manager = StreamableHTTPSessionManager(
+        app=server,
+        json_response=True,
+    )
+
+    async def handle_health(request):
+        status = await check_ollama(ollama_url)
+        return JSONResponse({
+            "server": "clawcal",
+            "status": "running",
+            "model": model,
+            "ollama": status,
+        })
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app):
+        async with session_manager.run():
+            yield
+
+    return Starlette(
+        routes=[
+            Route("/health", handle_health, methods=["GET"]),
+            Mount("/mcp", app=session_manager.handle_request),
+        ],
+        lifespan=lifespan,
+    )
+
+
+async def run_http_server(model: str, ollama_url: str, port: int) -> None:
+    import uvicorn
 
     from src.health import check_ollama
 
@@ -127,42 +170,11 @@ async def run_http_server(model: str, ollama_url: str, port: int) -> None:
         print(f"FATAL: Ollama not reachable at {ollama_url}: {ollama_status.get('error')}", file=_sys.stderr)
         _sys.exit(1)
 
-    store = MetricsStore()
-    await store.init()
-
-    server = create_server(model=model, ollama_url=ollama_url, store=store)
-
-    async def handle_mcp(request):
-        transport = StreamableHTTPServerTransport(mcp_session_id=None)
-        async with transport.connect() as streams:
-            read_stream, write_stream = streams
-            await asyncio.gather(
-                transport.handle_request(request.scope, request.receive, request._send),
-                server.run(read_stream, write_stream, server.create_initialization_options()),
-            )
-
-    async def handle_health(request):
-        status = await check_ollama(ollama_url)
-        return JSONResponse({
-            "server": "clawcal",
-            "status": "running",
-            "model": model,
-            "ollama": status,
-        })
-
-    app = Starlette(
-        routes=[
-            Route("/health", handle_health, methods=["GET"]),
-            Route("/mcp", handle_mcp, methods=["GET", "POST", "DELETE"]),
-        ],
-    )
+    app = create_http_app(model=model, ollama_url=ollama_url)
 
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info")
     uv_server = uvicorn.Server(config)
-    try:
-        await uv_server.serve()
-    finally:
-        await store.close()
+    await uv_server.serve()
 
 
 def main() -> None:
