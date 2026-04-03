@@ -105,3 +105,46 @@ async def test_result_while_running():
 
     result = tm.result(task_id)
     assert result["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_signal_file_created_on_done(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.task_manager.SIGNALS_DIR", tmp_path)
+
+    llm = FakeLlmClient([LlmResponse(text="Signal result")])
+    registry = ToolRegistry()
+    cost_est = CostEstimator()
+    tm = TaskManager(llm=llm, registry=registry, cost_estimator=cost_est)
+
+    submit_result = await tm.submit("Test signals")
+    task_id = submit_result["task_id"]
+
+    await asyncio.sleep(0.1)
+
+    signal_file = tmp_path / f"{task_id}.done"
+    assert signal_file.exists()
+    assert signal_file.read_text() == "Signal result"
+
+
+@pytest.mark.asyncio
+async def test_signal_file_created_on_error(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.task_manager.SIGNALS_DIR", tmp_path)
+
+    class ErrorLlm:
+        async def chat(self, messages, tools=None):
+            raise RuntimeError("LLM crashed")
+        async def close(self):
+            pass
+
+    registry = ToolRegistry()
+    cost_est = CostEstimator()
+    tm = TaskManager(llm=ErrorLlm(), registry=registry, cost_estimator=cost_est)
+
+    submit_result = await tm.submit("Will fail")
+    task_id = submit_result["task_id"]
+
+    await asyncio.sleep(0.1)
+
+    signal_file = tmp_path / f"{task_id}.error"
+    assert signal_file.exists()
+    assert "LLM crashed" in signal_file.read_text()
