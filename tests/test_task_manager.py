@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import time as _time
 import pytest
 
 from src.task_manager import TaskManager
@@ -178,3 +180,45 @@ async def test_async_task_produces_session_event():
     entry = tm._tasks[task_id]
     assert entry.get("session_event") is not None
     assert entry["session_event"].total_iterations > 0
+
+
+@pytest.mark.asyncio
+async def test_signal_file_deleted_after_result(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.task_manager.SIGNALS_DIR", tmp_path)
+
+    llm = FakeLlmClient([LlmResponse(text="Cleanup test")])
+    registry = ToolRegistry()
+    cost_est = CostEstimator()
+    tm = TaskManager(llm=llm, registry=registry, cost_estimator=cost_est)
+
+    submit_result = await tm.submit("Test cleanup")
+    task_id = submit_result["task_id"]
+
+    await asyncio.sleep(0.1)
+
+    signal_file = tmp_path / f"{task_id}.done"
+    assert signal_file.exists()
+
+    tm.result(task_id)
+    assert not signal_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_old_signals_pruned_at_startup(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.task_manager.SIGNALS_DIR", tmp_path)
+
+    old_file = tmp_path / "oldtask.done"
+    old_file.write_text("old result")
+    old_mtime = _time.time() - (25 * 3600)
+    os.utime(old_file, (old_mtime, old_mtime))
+
+    recent_file = tmp_path / "newtask.done"
+    recent_file.write_text("recent result")
+
+    llm = FakeLlmClient([])
+    registry = ToolRegistry()
+    cost_est = CostEstimator()
+    TaskManager(llm=llm, registry=registry, cost_estimator=cost_est)
+
+    assert not old_file.exists()
+    assert recent_file.exists()

@@ -32,6 +32,7 @@ class TaskManager:
         self._tasks: dict[str, dict[str, Any]] = {}
         self._lock = asyncio.Lock()
         SIGNALS_DIR.mkdir(parents=True, exist_ok=True)
+        self._prune_old_signals()
 
     async def submit(
         self,
@@ -151,6 +152,9 @@ class TaskManager:
             return {"task_id": task_id, "status": "running", "message": "Pas encore terminé"}
 
         elapsed = (entry["finished_at"] or time.monotonic()) - entry["started_at"]
+
+        self._cleanup_signal(task_id)
+
         if entry["status"] == "error":
             return {
                 "task_id": task_id,
@@ -165,6 +169,20 @@ class TaskManager:
             "result": entry["result"],
             "elapsed_seconds": round(elapsed, 1),
         }
+
+    def _prune_old_signals(self, max_age_hours: int = 24) -> None:
+        max_age_seconds = max_age_hours * 3600
+        now = time.time()
+        for path in SIGNALS_DIR.iterdir():
+            if path.suffix in (".done", ".error"):
+                age = now - path.stat().st_mtime
+                if age > max_age_seconds:
+                    path.unlink(missing_ok=True)
+
+    def _cleanup_signal(self, task_id: str) -> None:
+        for suffix in ("done", "error"):
+            path = SIGNALS_DIR / f"{task_id}.{suffix}"
+            path.unlink(missing_ok=True)
 
     def _write_signal(self, task_id: str, suffix: str, content: str) -> None:
         signal_path = SIGNALS_DIR / f"{task_id}.{suffix}"
