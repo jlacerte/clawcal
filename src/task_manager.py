@@ -11,6 +11,7 @@ from src.agent import Agent
 from src.llm_client import LlmClientProtocol
 from src.observability.collector import MetricsCollector
 from src.observability.cost_estimator import CostEstimator
+from src.observability.logger import log_session
 from src.tool_registry import ToolRegistry
 
 SIGNALS_DIR = Path.home() / ".clawcal" / "signals"
@@ -98,6 +99,7 @@ class TaskManager:
             original_cwd = os.getcwd()
             if working_directory:
                 os.chdir(working_directory)
+            collector = None
             try:
                 collector = MetricsCollector(
                     session_id=task_id,
@@ -123,6 +125,10 @@ class TaskManager:
                 entry["finished_at"] = time.monotonic()
                 if working_directory:
                     os.chdir(original_cwd)
+                if collector:
+                    session_event = collector.finalize()
+                    log_session(session_event)
+                    entry["session_event"] = session_event
 
     def status(self, task_id: str) -> dict:
         entry = self._tasks.get(task_id)

@@ -160,3 +160,21 @@ async def test_run_sync_returns_result():
 
     result = await tm.run_sync("Say hello")
     assert result == "Sync done!"
+
+
+@pytest.mark.asyncio
+async def test_async_task_produces_session_event():
+    """Verify that _run_agent calls finalize() and stores the session event."""
+    llm = FakeLlmClient([LlmResponse(text="Observable!")])
+    registry = ToolRegistry()
+    cost_est = CostEstimator()
+    tm = TaskManager(llm=llm, registry=registry, cost_estimator=cost_est)
+
+    submit_result = await tm.submit("Say hello")
+    task_id = submit_result["task_id"]
+
+    await asyncio.sleep(0.1)
+
+    entry = tm._tasks[task_id]
+    assert entry.get("session_event") is not None
+    assert entry["session_event"].total_iterations > 0
