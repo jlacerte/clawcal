@@ -94,6 +94,42 @@ class TaskManager:
                 if working_directory:
                     os.chdir(original_cwd)
 
+    def status(self, task_id: str) -> dict:
+        entry = self._tasks.get(task_id)
+        if entry is None:
+            return {"task_id": task_id, "status": "unknown"}
+
+        elapsed = (entry["finished_at"] or time.monotonic()) - entry["started_at"]
+        return {
+            "task_id": task_id,
+            "status": entry["status"],
+            "elapsed_seconds": round(elapsed, 1),
+        }
+
+    def result(self, task_id: str) -> dict:
+        entry = self._tasks.get(task_id)
+        if entry is None:
+            return {"task_id": task_id, "status": "unknown"}
+
+        if entry["status"] == "running":
+            return {"task_id": task_id, "status": "running", "message": "Pas encore terminé"}
+
+        elapsed = (entry["finished_at"] or time.monotonic()) - entry["started_at"]
+        if entry["status"] == "error":
+            return {
+                "task_id": task_id,
+                "status": "error",
+                "error": entry["error"],
+                "elapsed_seconds": round(elapsed, 1),
+            }
+
+        return {
+            "task_id": task_id,
+            "status": "done",
+            "result": entry["result"],
+            "elapsed_seconds": round(elapsed, 1),
+        }
+
     def _write_signal(self, task_id: str, suffix: str, content: str) -> None:
         signal_path = SIGNALS_DIR / f"{task_id}.{suffix}"
         signal_path.write_text(content, encoding="utf-8")

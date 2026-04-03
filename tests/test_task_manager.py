@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import pytest
 
 from src.task_manager import TaskManager
@@ -31,4 +32,76 @@ async def test_submit_returns_task_id():
 
     result = await tm.submit("Say hello")
     assert "task_id" in result
+    assert result["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_status_running_then_done():
+    llm = FakeLlmClient([LlmResponse(text="Done!")])
+    registry = ToolRegistry()
+    cost_est = CostEstimator()
+    tm = TaskManager(llm=llm, registry=registry, cost_estimator=cost_est)
+
+    submit_result = await tm.submit("Say hello")
+    task_id = submit_result["task_id"]
+
+    # Let the background task complete
+    await asyncio.sleep(0.1)
+
+    status = tm.status(task_id)
+    assert status["status"] == "done"
+    assert "elapsed_seconds" in status
+
+
+@pytest.mark.asyncio
+async def test_result_returns_output():
+    llm = FakeLlmClient([LlmResponse(text="Hello world!")])
+    registry = ToolRegistry()
+    cost_est = CostEstimator()
+    tm = TaskManager(llm=llm, registry=registry, cost_estimator=cost_est)
+
+    submit_result = await tm.submit("Say hello")
+    task_id = submit_result["task_id"]
+
+    await asyncio.sleep(0.1)
+
+    result = tm.result(task_id)
+    assert result["status"] == "done"
+    assert result["result"] == "Hello world!"
+
+
+@pytest.mark.asyncio
+async def test_status_unknown_task():
+    llm = FakeLlmClient([])
+    registry = ToolRegistry()
+    cost_est = CostEstimator()
+    tm = TaskManager(llm=llm, registry=registry, cost_estimator=cost_est)
+
+    status = tm.status("nonexistent")
+    assert status["status"] == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_result_while_running():
+    """result() on a running task returns status running."""
+    import asyncio as _asyncio
+
+    async def slow_chat(messages, tools=None):
+        await _asyncio.sleep(1)
+        return LlmResponse(text="Slow done")
+
+    class SlowLlm:
+        async def chat(self, messages, tools=None):
+            return await slow_chat(messages, tools)
+        async def close(self):
+            pass
+
+    registry = ToolRegistry()
+    cost_est = CostEstimator()
+    tm = TaskManager(llm=SlowLlm(), registry=registry, cost_estimator=cost_est)
+
+    submit_result = await tm.submit("Slow task")
+    task_id = submit_result["task_id"]
+
+    result = tm.result(task_id)
     assert result["status"] == "running"
