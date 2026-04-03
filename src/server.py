@@ -20,6 +20,7 @@ def create_server(
     model: str = "qwen3:14b",
     ollama_url: str = "http://localhost:11434",
     store: MetricsStore | None = None,
+    llm: LlmClient | None = None,
 ) -> Server:
     server = Server("clawcal")
 
@@ -27,7 +28,8 @@ def create_server(
     for tool in ALL_TOOLS:
         registry.register(tool)
 
-    llm = LlmClient(ollama_url=ollama_url, model=model)
+    if llm is None:
+        llm = LlmClient(ollama_url=ollama_url, model=model)
     cost_estimator = CostEstimator()
 
     @server.list_tools()
@@ -131,7 +133,9 @@ def create_http_app(
 
     from src.health import check_ollama
 
-    server = create_server(model=model, ollama_url=ollama_url)
+    llm = LlmClient(ollama_url=ollama_url, model=model)
+    store = MetricsStore()
+    server = create_server(model=model, ollama_url=ollama_url, store=store, llm=llm)
 
     session_manager = StreamableHTTPSessionManager(
         app=server,
@@ -149,8 +153,13 @@ def create_http_app(
 
     @contextlib.asynccontextmanager
     async def lifespan(app):
+        await store.init()
         async with session_manager.run():
-            yield
+            try:
+                yield
+            finally:
+                await llm.close()
+                await store.close()
 
     return Starlette(
         routes=[
