@@ -49,7 +49,7 @@ class LlmClient:
         self,
         ollama_url: str = "http://localhost:11434",
         model: str = "qwen3:14b",
-        max_tokens: int = 4096,
+        max_tokens: int = 8192,
         temperature: float = 0.0,
     ) -> None:
         self.ollama_url = ollama_url.rstrip("/")
