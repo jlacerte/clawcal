@@ -2,14 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+
 ## Project
 
-Clawcal — Local coding agent MCP server powered by Ollama. Exposes 7 coding tools + a composite `code_agent` tool over MCP (SSE HTTP ou stdio). Any MCP client can use a local LLM to read, write, edit, search, and execute code autonomously.
+Clawcal — Local coding agent MCP server powered by Ollama. Exposes 7 coding tools + a composite `code_agent` tool over MCP (Streamable HTTP ou stdio). Any MCP client can use a local LLM to read, write, edit, search, and execute code autonomously.
 
 ## Stack
 
 - Python 3.12+, async/await throughout
-- mcp SDK (SSE + stdio transport), starlette, uvicorn, httpx, pydantic, aiosqlite
+- mcp SDK (Streamable HTTP + stdio transport), starlette, uvicorn, httpx, pydantic, aiosqlite
 - Target platform: macOS
 
 ## Commands
@@ -24,7 +25,7 @@ python -m pytest tests/test_agent.py -v
 # Run a single test
 python -m pytest tests/test_agent.py::test_agent_single_tool_call -v
 
-# Start SSE server (default, port 8100)
+# Start HTTP server (default, port 8100)
 python -m src.server
 
 # Start in stdio mode (testing/compatibility)
@@ -69,7 +70,7 @@ To add a tool: create a class in `src/tools/`, add it to `ALL_TOOLS`, write test
 - `@server.list_tools()` returns all native tools + the `code_agent` meta-tool
 - `@server.call_tool()` routes: `code_agent` creates a full agent session with observability; other tools execute directly
 - Two transport modes:
-  - **SSE (default)** : `--transport sse --port 8100` — persistent HTTP service, `/health` endpoint, Ollama check at startup
+  - **Streamable HTTP (default)** : `--transport http --port 8100` — persistent HTTP service, `/mcp` endpoint, `/health` endpoint, Ollama check at startup
   - **stdio** : `--transport stdio` — child process mode for testing/compatibility
 - CLI args: `--model` (default `qwen3:14b`), `--ollama-url` (default `http://localhost:11434`), `--transport`, `--port`
 - Managed as a macOS LaunchAgent via `clawcal.sh` (install/start/stop/status/logs)

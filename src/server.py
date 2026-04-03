@@ -109,12 +109,12 @@ async def run_server(model: str, ollama_url: str) -> None:
         await store.close()
 
 
-async def run_sse_server(model: str, ollama_url: str, port: int) -> None:
+async def run_http_server(model: str, ollama_url: str, port: int) -> None:
     import uvicorn
     from starlette.applications import Starlette
-    from starlette.responses import JSONResponse, Response
-    from starlette.routing import Mount, Route
-    from mcp.server.sse import SseServerTransport
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+    from mcp.server.streamable_http import StreamableHTTPServerTransport
 
     from src.health import check_ollama
 
@@ -131,12 +131,15 @@ async def run_sse_server(model: str, ollama_url: str, port: int) -> None:
     await store.init()
 
     server = create_server(model=model, ollama_url=ollama_url, store=store)
-    sse = SseServerTransport("/messages/")
 
-    async def handle_sse(request):
-        async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
-            await server.run(streams[0], streams[1], server.create_initialization_options())
-        return Response()
+    async def handle_mcp(request):
+        transport = StreamableHTTPServerTransport(mcp_session_id=None)
+        async with transport.connect() as streams:
+            read_stream, write_stream = streams
+            await asyncio.gather(
+                transport.handle_request(request.scope, request.receive, request._send),
+                server.run(read_stream, write_stream, server.create_initialization_options()),
+            )
 
     async def handle_health(request):
         status = await check_ollama(ollama_url)
@@ -150,8 +153,7 @@ async def run_sse_server(model: str, ollama_url: str, port: int) -> None:
     app = Starlette(
         routes=[
             Route("/health", handle_health, methods=["GET"]),
-            Route("/sse", handle_sse, methods=["GET"]),
-            Mount("/messages/", app=sse.handle_post_message),
+            Route("/mcp", handle_mcp, methods=["GET", "POST", "DELETE"]),
         ],
     )
 
@@ -167,12 +169,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Clawcal MCP Server")
     parser.add_argument("--model", default="qwen3:14b", help="Ollama model name")
     parser.add_argument("--ollama-url", default="http://localhost:11434", help="Ollama URL")
-    parser.add_argument("--transport", choices=["stdio", "sse"], default="sse", help="Transport mode")
-    parser.add_argument("--port", type=int, default=8100, help="SSE server port")
+    parser.add_argument("--transport", choices=["stdio", "http"], default="http", help="Transport mode")
+    parser.add_argument("--port", type=int, default=8100, help="HTTP server port")
     args = parser.parse_args()
 
-    if args.transport == "sse":
-        asyncio.run(run_sse_server(model=args.model, ollama_url=args.ollama_url, port=args.port))
+    if args.transport == "http":
+        asyncio.run(run_http_server(model=args.model, ollama_url=args.ollama_url, port=args.port))
     else:
         asyncio.run(run_server(model=args.model, ollama_url=args.ollama_url))
 

@@ -10,7 +10,7 @@
         <string>-m</string>
         <string>src.server</string>
         <string>--transport</string>
-        <string>sse</string>
+        <string>http</string>
         <string>--port</string>
         <string>8100</string>
         <string>--model</string>
