@@ -109,12 +109,72 @@ async def run_server(model: str, ollama_url: str) -> None:
         await store.close()
 
 
+async def run_sse_server(model: str, ollama_url: str, port: int) -> None:
+    import uvicorn
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse, Response
+    from starlette.routing import Mount, Route
+    from mcp.server.sse import SseServerTransport
+
+    from src.health import check_ollama
+
+    setup_logging(console=False)
+
+    # Fail fast if Ollama is unreachable
+    ollama_status = await check_ollama(ollama_url)
+    if ollama_status["status"] != "ok":
+        import sys as _sys
+        print(f"FATAL: Ollama not reachable at {ollama_url}: {ollama_status.get('error')}", file=_sys.stderr)
+        _sys.exit(1)
+
+    store = MetricsStore()
+    await store.init()
+
+    server = create_server(model=model, ollama_url=ollama_url, store=store)
+    sse = SseServerTransport("/messages/")
+
+    async def handle_sse(request):
+        async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
+            await server.run(streams[0], streams[1], server.create_initialization_options())
+        return Response()
+
+    async def handle_health(request):
+        status = await check_ollama(ollama_url)
+        return JSONResponse({
+            "server": "clawcal",
+            "status": "running",
+            "model": model,
+            "ollama": status,
+        })
+
+    app = Starlette(
+        routes=[
+            Route("/health", handle_health, methods=["GET"]),
+            Route("/sse", handle_sse, methods=["GET"]),
+            Mount("/messages/", app=sse.handle_post_message),
+        ],
+    )
+
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info")
+    uv_server = uvicorn.Server(config)
+    try:
+        await uv_server.serve()
+    finally:
+        await store.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Clawcal MCP Server")
     parser.add_argument("--model", default="qwen3:14b", help="Ollama model name")
     parser.add_argument("--ollama-url", default="http://localhost:11434", help="Ollama URL")
+    parser.add_argument("--transport", choices=["stdio", "sse"], default="sse", help="Transport mode")
+    parser.add_argument("--port", type=int, default=8100, help="SSE server port")
     args = parser.parse_args()
-    asyncio.run(run_server(model=args.model, ollama_url=args.ollama_url))
+
+    if args.transport == "sse":
+        asyncio.run(run_sse_server(model=args.model, ollama_url=args.ollama_url, port=args.port))
+    else:
+        asyncio.run(run_server(model=args.model, ollama_url=args.ollama_url))
 
 
 if __name__ == "__main__":
