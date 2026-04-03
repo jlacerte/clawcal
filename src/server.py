@@ -60,37 +60,40 @@ def create_server(
         )
         return tools
 
+    agent_lock = asyncio.Lock()
+
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         if name == "code_agent":
-            cwd = arguments.get("working_directory")
-            original_cwd = os.getcwd()
-            if cwd:
-                os.chdir(cwd)
-
-            session_id = str(uuid.uuid4())
-            collector = MetricsCollector(
-                session_id=session_id,
-                prompt=arguments["prompt"],
-                model=model,
-                cost_estimator=cost_estimator,
-            )
-
-            try:
-                max_iter = arguments.get("max_iterations", 20)
-                agent = Agent(llm=llm, registry=registry, max_iterations=max_iter, collector=collector)
-                result = await agent.run(arguments["prompt"])
-            finally:
+            async with agent_lock:
+                cwd = arguments.get("working_directory")
+                original_cwd = os.getcwd()
                 if cwd:
-                    os.chdir(original_cwd)
+                    os.chdir(cwd)
 
-            session_event = collector.finalize()
-            log_session(session_event)
+                session_id = str(uuid.uuid4())
+                collector = MetricsCollector(
+                    session_id=session_id,
+                    prompt=arguments["prompt"],
+                    model=model,
+                    cost_estimator=cost_estimator,
+                )
 
-            if store:
-                await store.save_session(session_event, collector.llm_events, collector.tool_events)
+                try:
+                    max_iter = arguments.get("max_iterations", 20)
+                    agent = Agent(llm=llm, registry=registry, max_iterations=max_iter, collector=collector)
+                    result = await agent.run(arguments["prompt"])
+                finally:
+                    if cwd:
+                        os.chdir(original_cwd)
 
-            return [TextContent(type="text", text=result)]
+                session_event = collector.finalize()
+                log_session(session_event)
+
+                if store:
+                    await store.save_session(session_event, collector.llm_events, collector.tool_events)
+
+                return [TextContent(type="text", text=result)]
         try:
             result = await registry.execute(name, arguments)
         except KeyError as e:
