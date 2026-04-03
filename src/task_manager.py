@@ -63,15 +63,14 @@ class TaskManager:
         max_iterations: int,
     ) -> None:
         entry = self._tasks[task_id]
-        original_cwd = os.getcwd()
-        if working_directory:
-            os.chdir(working_directory)
 
         async with self._lock:
+            original_cwd = os.getcwd()
+            if working_directory:
+                os.chdir(working_directory)
             try:
-                session_id = task_id
                 collector = MetricsCollector(
-                    session_id=session_id,
+                    session_id=task_id,
                     prompt=prompt,
                     model=self._model,
                     cost_estimator=self._cost_estimator,
