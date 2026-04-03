@@ -89,7 +89,12 @@ def create_server(
                 await store.save_session(session_event, collector.llm_events, collector.tool_events)
 
             return [TextContent(type="text", text=result)]
-        result = await registry.execute(name, arguments)
+        try:
+            result = await registry.execute(name, arguments)
+        except KeyError as e:
+            return [TextContent(type="text", text=f"Error: {e}")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Tool execution error: {e}")]
         return [TextContent(type="text", text=result)]
 
     return server
