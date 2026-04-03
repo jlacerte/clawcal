@@ -93,3 +93,11 @@ def test_log_session_writes_jsonl(tmp_path):
     last_line = json.loads(lines[-1])
     assert last_line["event_type"] == "session"
     assert last_line["total_iterations"] == 2
+
+
+def test_setup_logging_no_console(tmp_path):
+    """Console handler is omitted when console=False."""
+    log_dir = str(tmp_path / "logs")
+    setup_logging(log_dir=log_dir, console=False)
+    console_logger = logging.getLogger("clawcal.console")
+    assert len(console_logger.handlers) == 0

@@ -23,6 +23,7 @@ class _JsonFormatter(logging.Formatter):
 def setup_logging(
     log_dir: str = "~/.clawcal/logs",
     level: int = logging.INFO,
+    console: bool = True,
 ) -> None:
     global _json_logger, _console_logger
 
@@ -47,11 +48,12 @@ def setup_logging(
     _console_logger.setLevel(level)
     _console_logger.handlers.clear()
 
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(
-        logging.Formatter("[%(asctime)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-    )
-    _console_logger.addHandler(console_handler)
+    if console:
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(
+            logging.Formatter("[%(asctime)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+        )
+        _console_logger.addHandler(console_handler)
 
 
 def _log_event(event_type: str, data: dict, console_msg: str) -> None:
