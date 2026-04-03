@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.clawcal.server</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/justinlacerte/Documents/ClaudeCodeLocal/clawcal/.venv/bin/python</string>
+        <string>-m</string>
+        <string>src.server</string>
+        <string>--transport</string>
+        <string>sse</string>
+        <string>--port</string>
+        <string>8100</string>
+        <string>--model</string>
+        <string>qwen3:14b</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/justinlacerte/Documents/ClaudeCodeLocal/clawcal</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/justinlacerte/Documents/ClaudeCodeLocal/clawcal/.venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/justinlacerte</string>
+        <key>OLLAMA_HOST</key>
+        <string>http://127.0.0.1:11434</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/justinlacerte/.clawcal/server.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/justinlacerte/.clawcal/server.err.log</string>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>
