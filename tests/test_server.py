@@ -28,16 +28,16 @@ def test_create_server_returns_server():
     assert server.name == "clawcal"
 
 
-def test_main_parses_sse_transport(monkeypatch):
-    """--transport sse triggers run_sse_server."""
+def test_main_parses_http_transport(monkeypatch):
+    """--transport http triggers run_http_server."""
     import src.server as mod
     called_with = {}
 
-    async def fake_run_sse(model, ollama_url, port):
+    async def fake_run_http(model, ollama_url, port):
         called_with.update(model=model, ollama_url=ollama_url, port=port)
 
-    monkeypatch.setattr(mod, "run_sse_server", fake_run_sse)
-    monkeypatch.setattr(sys, "argv", ["server", "--transport", "sse", "--port", "9999"])
+    monkeypatch.setattr(mod, "run_http_server", fake_run_http)
+    monkeypatch.setattr(sys, "argv", ["server", "--transport", "http", "--port", "9999"])
     mod.main()
     assert called_with["port"] == 9999
     assert called_with["model"] == "qwen3:14b"
