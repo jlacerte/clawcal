@@ -40,7 +40,10 @@ class TaskManager:
         working_directory: str | None = None,
         max_iterations: int = 20,
     ) -> dict:
+        self._evict_stale_tasks()
         task_id = uuid.uuid4().hex[:8]
+        while task_id in self._tasks:
+            task_id = uuid.uuid4().hex[:8]
         entry = {
             "task_id": task_id,
             "status": "running",
@@ -159,6 +162,7 @@ class TaskManager:
         elapsed = (entry["finished_at"] or time.monotonic()) - entry["started_at"]
 
         self._cleanup_signal(task_id)
+        del self._tasks[task_id]
 
         if entry["status"] == "error":
             return {
@@ -174,6 +178,17 @@ class TaskManager:
             "result": entry["result"],
             "elapsed_seconds": round(elapsed, 1),
         }
+
+    def _evict_stale_tasks(self, max_age_seconds: float = 3600) -> None:
+        now = time.monotonic()
+        stale = [
+            tid for tid, entry in self._tasks.items()
+            if entry["status"] in ("done", "error")
+            and entry["finished_at"]
+            and (now - entry["finished_at"]) > max_age_seconds
+        ]
+        for tid in stale:
+            del self._tasks[tid]
 
     def _prune_old_signals(self, max_age_hours: int = 24) -> None:
         max_age_seconds = max_age_hours * 3600

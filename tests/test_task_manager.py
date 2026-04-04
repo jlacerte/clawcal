@@ -165,6 +165,27 @@ async def test_run_sync_returns_result():
 
 
 @pytest.mark.asyncio
+async def test_task_evicted_after_result():
+    """Task entry is removed from _tasks after result() is called."""
+    llm = FakeLlmClient([LlmResponse(text="Evict me")])
+    registry = ToolRegistry()
+    cost_est = CostEstimator()
+    tm = TaskManager(llm=llm, registry=registry, cost_estimator=cost_est)
+
+    submit_result = await tm.submit("Test eviction")
+    task_id = submit_result["task_id"]
+
+    await asyncio.sleep(0.1)
+
+    assert task_id in tm._tasks
+    tm.result(task_id)
+    assert task_id not in tm._tasks
+
+    status = tm.status(task_id)
+    assert status["status"] == "unknown"
+
+
+@pytest.mark.asyncio
 async def test_async_task_produces_session_event():
     """Verify that _run_agent calls finalize() and stores the session event."""
     llm = FakeLlmClient([LlmResponse(text="Observable!")])
