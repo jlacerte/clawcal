@@ -68,6 +68,7 @@ class TaskManager:
             original_cwd = os.getcwd()
             if working_directory:
                 os.chdir(working_directory)
+            collector = None
             try:
                 collector = MetricsCollector(
                     session_id=uuid.uuid4().hex[:8],
@@ -86,6 +87,9 @@ class TaskManager:
             finally:
                 if working_directory:
                     os.chdir(original_cwd)
+                if collector:
+                    session_event = collector.finalize()
+                    log_session(session_event)
 
     async def _run_agent(
         self,
@@ -124,6 +128,7 @@ class TaskManager:
                 self._write_signal(task_id, "error", str(e))
             finally:
                 entry["finished_at"] = time.monotonic()
+                entry["_asyncio_task"] = None
                 if working_directory:
                     os.chdir(original_cwd)
                 if collector:
@@ -174,10 +179,13 @@ class TaskManager:
         max_age_seconds = max_age_hours * 3600
         now = time.time()
         for path in SIGNALS_DIR.iterdir():
-            if path.suffix in (".done", ".error"):
-                age = now - path.stat().st_mtime
-                if age > max_age_seconds:
-                    path.unlink(missing_ok=True)
+            try:
+                if path.suffix in (".done", ".error"):
+                    age = now - path.stat().st_mtime
+                    if age > max_age_seconds:
+                        path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def _cleanup_signal(self, task_id: str) -> None:
         for suffix in ("done", "error"):

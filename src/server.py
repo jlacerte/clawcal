@@ -106,12 +106,15 @@ def create_server(
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         if name == "code_agent":
-            result = await task_manager.run_sync(
-                prompt=arguments["prompt"],
-                working_directory=arguments.get("working_directory"),
-                max_iterations=arguments.get("max_iterations", 20),
-            )
-            return [TextContent(type="text", text=result)]
+            try:
+                result = await task_manager.run_sync(
+                    prompt=arguments["prompt"],
+                    working_directory=arguments.get("working_directory"),
+                    max_iterations=arguments.get("max_iterations", 20),
+                )
+                return [TextContent(type="text", text=result)]
+            except Exception as e:
+                return [TextContent(type="text", text=f"Agent error: {e}")]
 
         if name == "code_agent_submit":
             result = await task_manager.submit(
